@@ -8,6 +8,11 @@ import multiprocessing as mp
 from time import sleep
 import threading
 
+import rospy
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge, CvBridgeError
+
+
 yolo_scale_13 = 13
 yolo_scale_26 = 26
 yolo_scale_52 = 52
@@ -49,6 +54,31 @@ time1 = 0
 time2 = 0
 lastresults = None
 
+'''
+ROS Image receive here
+'''
+bridge = CvBridge() 
+
+updated = 0
+cv2_img = []
+
+def image_callback(msg):
+    global updated
+    global cv2_img
+
+    if updated == 0:
+        try:
+            # Convert your ROS Image message to OpenCV2
+            cv2_img = bridge.imgmsg_to_cv2(msg, "bgr8")
+            updated = 1
+        except CvBridgeError, e:
+            print(e)
+
+
+
+'''
+Original code
+'''
 def EntryIndex(side, lcoords, lclasses, location, entry):
     n = int(location / (side * side))
     loc = location % (side * side)
@@ -153,22 +183,33 @@ def camThread(LABELS, results, frameBuffer, camera_width, camera_height, vidfps)
     #window_name = "USB Camera"
     #wait_key_time = 1
 
-    cam = cv2.VideoCapture("data/input/testvideo4.mp4")
-    camera_width = int(cam.get(cv2.CAP_PROP_FRAME_WIDTH))
-    camera_height = int(cam.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    frame_count = int(cam.get(cv2.CAP_PROP_FRAME_COUNT))
-    window_name = "Movie File"
-    wait_key_time = int(1000 / vidfps)
+    # cam = cv2.VideoCapture("data/input/testvideo4.mp4")
+    # camera_width = int(cam.get(cv2.CAP_PROP_FRAME_WIDTH))
+    # camera_height = int(cam.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    # frame_count = int(cam.get(cv2.CAP_PROP_FRAME_COUNT))
+    # window_name = "Movie File"
+    # wait_key_time = int(1000 / vidfps)
 
+    global cv2_img
+    camera_width = 640
+    camera_height = 480
+    wait_key_time = 1
+
+
+    window_name = "ROS_TOPIC"
     cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE)
 
     while True:
         t1 = time.perf_counter()
 
-        # USB Camera Stream Read
-        s, color_image = cam.read()
-        if not s:
-            continue
+        # # USB Camera Stream Read
+        # s, color_image = cam.read()
+        # if not s:
+        #     continue
+
+        # Ros topic read
+        color_image = cv2_img
+
         if frameBuffer.full():
             frameBuffer.get()
 
@@ -356,13 +397,21 @@ def inferencer(results, frameBuffer, number_of_ncs, camera_width, camera_height,
 
 if __name__ == '__main__':
 
+    rospy.init_node('detector', anonymous=True)
+    rospy.Subscriber(topic, Image, image_callback)
+    boxes_pub = rospy.Publisher('/objects', ObjectsInBoxes, queue_size=1)
+
     parser = argparse.ArgumentParser()
     parser.add_argument('-numncs','--numberofncs',dest='number_of_ncs',type=int,default=1,help='Number of NCS. (Default=1)')
     args = parser.parse_args()
 
     number_of_ncs = args.number_of_ncs
-    camera_width = 320
-    camera_height = 240
+    # camera_width = 320
+    # camera_height = 240
+
+    camera_width = 640
+    camera_height = 480
+
     vidfps = 30
 
     try:
@@ -385,7 +434,8 @@ if __name__ == '__main__':
         processes.append(p)
 
         while True:
-            sleep(1)
+            # sleep(1)
+            rospy.spin()
 
     except:
         import traceback
