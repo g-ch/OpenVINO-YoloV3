@@ -399,7 +399,6 @@ if __name__ == '__main__':
 
     rospy.init_node('detector', anonymous=True)
     rospy.Subscriber(topic, Image, image_callback)
-    boxes_pub = rospy.Publisher('/objects', ObjectsInBoxes, queue_size=1)
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-numncs','--numberofncs',dest='number_of_ncs',type=int,default=1,help='Number of NCS. (Default=1)')

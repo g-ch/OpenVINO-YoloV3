@@ -8,6 +8,11 @@ import multiprocessing as mp
 from time import sleep
 import threading
 
+import rospy
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge, CvBridgeError
+from object_msgs.msg import *
+
 yolo_scale_13 = 13
 yolo_scale_26 = 26
 yolo_scale_52 = 52
@@ -50,7 +55,32 @@ time2 = 0
 lastresults = None
 
 
+'''
+ROS Image receive here
+'''
+bridge = CvBridge()
 
+boxes_pub = 0 
+
+updated = 0
+cv2_img = []
+
+def image_callback(msg):
+    global updated
+    global cv2_img
+
+    if updated == 0:
+        try:
+            # Convert your ROS Image message to OpenCV2
+            cv2_img = bridge.imgmsg_to_cv2(msg, "bgr8")
+            updated = 1
+        except CvBridgeError, e:
+            print(e)
+
+
+'''
+Original code
+'''
 def EntryIndex(side, lcoords, lclasses, location, entry):
     n = int(location / (side * side))
     loc = location % (side * side)
@@ -143,15 +173,15 @@ def camThread(LABELS, results, frameBuffer, camera_width, camera_height, vidfps)
     global cam
     global window_name
 
-    cam = cv2.VideoCapture(0)
-    if cam.isOpened() != True:
-        print("USB Camera Open Error!!!")
-        sys.exit(0)
-    cam.set(cv2.CAP_PROP_FPS, vidfps)
-    cam.set(cv2.CAP_PROP_FRAME_WIDTH, camera_width)
-    cam.set(cv2.CAP_PROP_FRAME_HEIGHT, camera_height)
-    window_name = "USB Camera"
-    wait_key_time = 1
+    # cam = cv2.VideoCapture(0)
+    # if cam.isOpened() != True:
+    #     print("USB Camera Open Error!!!")
+    #     sys.exit(0)
+    # cam.set(cv2.CAP_PROP_FPS, vidfps)
+    # cam.set(cv2.CAP_PROP_FRAME_WIDTH, camera_width)
+    # cam.set(cv2.CAP_PROP_FRAME_HEIGHT, camera_height)
+    # window_name = "USB Camera"
+    # wait_key_time = 1
 
     #cam = cv2.VideoCapture("data/input/testvideo4.mp4")
     #camera_width = int(cam.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -160,15 +190,31 @@ def camThread(LABELS, results, frameBuffer, camera_width, camera_height, vidfps)
     #window_name = "Movie File"
     #wait_key_time = int(1000 / vidfps)
 
+    global cv2_img
+    global updated
+
+    camera_width = 640
+    camera_height = 480
+    wait_key_time = 1
+    window_name = "ROS_TOPIC"
+
     cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE)
 
     while True:
         t1 = time.perf_counter()
 
         # USB Camera Stream Read
-        s, color_image = cam.read()
-        if not s:
-            continue
+        # s, color_image = cam.read()
+        # if not s:
+        #     continue
+
+        # Ros topic read
+        while updated != 1:
+            sleep(0.005)
+
+        color_image = cv2_img
+
+
         if frameBuffer.full():
             frameBuffer.get()
 
@@ -192,6 +238,12 @@ def camThread(LABELS, results, frameBuffer, camera_width, camera_height, vidfps)
             lastresults = objects
         else:
             if not isinstance(lastresults, type(None)):
+
+                #ros msg to publish
+                boxes = ObjectsInBoxes();
+                boxes.header.stamp = rospy.Time.now()
+                detected = 0
+
                 for obj in lastresults:
                     if obj.confidence < 0.2:
                         continue
@@ -201,6 +253,23 @@ def camThread(LABELS, results, frameBuffer, camera_width, camera_height, vidfps)
                         label_text = LABELS[label] + " (" + "{:.1f}".format(confidence * 100) + "%)"
                         cv2.rectangle(color_image, (obj.xmin, obj.ymin), (obj.xmax, obj.ymax), box_color, box_thickness)
                         cv2.putText(color_image, label_text, (obj.xmin, obj.ymin - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, label_text_color, 1)
+
+                        # add to ros msg
+                        box_temp = ObjectInBox()
+                        box_temp.object.object_name = LABELS[label]
+                        box_temp.object.probability = 1.0
+                        box_temp.roi.x_offset = obj.xmin
+                        box_temp.roi.y_offset = obj.ymin
+                        box_temp.roi.width = obj.xmax - obj.xmin
+                        box_temp.roi.height = obj.ymax - obj.ymin
+
+                        boxes.objects_vector.append(box_temp)
+                        detected = 1
+
+                if detected == 1:
+                    boxes_pub.publish(boxes)
+
+                updated = 0
 
         cv2.putText(color_image, fps,       (width-170,15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (38,0,255), 1, cv2.LINE_AA)
         cv2.putText(color_image, detectfps, (width-170,30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (38,0,255), 1, cv2.LINE_AA)
@@ -358,13 +427,23 @@ def inferencer(results, frameBuffer, number_of_ncs, camera_width, camera_height,
 
 if __name__ == '__main__':
 
+    rospy.init_node('detector', anonymous=True)
+    rospy.Subscriber(topic, Image, image_callback)
+
+    global boxes_pub
+    boxes_pub = rospy.Publisher('/objects', ObjectsInBoxes, queue_size=1)
+
     parser = argparse.ArgumentParser()
     parser.add_argument('-numncs','--numberofncs',dest='number_of_ncs',type=int,default=1,help='Number of NCS. (Default=1)')
     args = parser.parse_args()
 
     number_of_ncs = args.number_of_ncs
-    camera_width = 320
-    camera_height = 240
+    # camera_width = 320
+    # camera_height = 240
+
+    camera_width = 640
+    camera_height = 480
+
     vidfps = 30
 
     try:
@@ -387,7 +466,8 @@ if __name__ == '__main__':
         processes.append(p)
 
         while True:
-            sleep(1)
+            # sleep(1)
+            rospy.spin()
 
     except:
         import traceback
