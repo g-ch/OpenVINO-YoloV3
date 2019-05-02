@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import sys, os, cv2, time, heapq, argparse
 import numpy as np, math
 try:
@@ -15,7 +17,7 @@ yolo_scale_52 = 52
 classes = 80
 coords = 4
 num = 3
-anchors = [10,13,16,30,33,23,30,61,62,45,59,119,116,90,156,198,373,326]
+anchors = [10,14, 23,27, 37,58, 81,82, 135,169, 344,319]
 
 LABELS = ("person", "bicycle", "car", "motorbike", "aeroplane",
           "bus", "train", "truck", "boat", "traffic light",
@@ -48,6 +50,8 @@ detectframecount = 0
 time1 = 0
 time2 = 0
 lastresults = None
+
+
 
 def EntryIndex(side, lcoords, lclasses, location, entry):
     n = int(location / (side * side))
@@ -100,10 +104,8 @@ def ParseYOLOV3Output(blob, resized_im_h, resized_im_w, original_im_h, original_
     anchor_offset = 0
 
     if side == yolo_scale_13:
-        anchor_offset = 2 * 6
-    elif side == yolo_scale_26:
         anchor_offset = 2 * 3
-    elif side == yolo_scale_52:
+    elif side == yolo_scale_26:
         anchor_offset = 2 * 0
 
     side_square = side * side
@@ -143,15 +145,15 @@ def camThread(LABELS, results, frameBuffer, camera_width, camera_height, vidfps)
     global cam
     global window_name
 
-    #cam = cv2.VideoCapture(0)
-    #if cam.isOpened() != True:
-    #    print("USB Camera Open Error!!!")
-    #    sys.exit(0)
-    #cam.set(cv2.CAP_PROP_FPS, vidfps)
-    #cam.set(cv2.CAP_PROP_FRAME_WIDTH, camera_width)
-    #cam.set(cv2.CAP_PROP_FRAME_HEIGHT, camera_height)
-    #window_name = "USB Camera"
-    #wait_key_time = 1
+    # cam = cv2.VideoCapture(0)
+    # if cam.isOpened() != True:
+    #     print("USB Camera Open Error!!!")
+    #     sys.exit(0)
+    # cam.set(cv2.CAP_PROP_FPS, vidfps)
+    # cam.set(cv2.CAP_PROP_FRAME_WIDTH, camera_width)
+    # cam.set(cv2.CAP_PROP_FRAME_HEIGHT, camera_height)
+    # window_name = "USB Camera"
+    # wait_key_time = 1
 
     cam = cv2.VideoCapture("data/input/testvideo4.mp4")
     camera_width = int(cam.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -235,7 +237,7 @@ def searchlist(l, x, notfoundvalue=-1):
 
 def async_infer(ncsworker):
 
-    ncsworker.skip_frame_measurement()
+    #ncsworker.skip_frame_measurement()
 
     while True:
         ncsworker.predict_async()
@@ -246,12 +248,12 @@ class NcsWorker(object):
     def __init__(self, devid, frameBuffer, results, camera_width, camera_height, number_of_ncs, vidfps):
         self.devid = devid
         self.frameBuffer = frameBuffer
-        self.model_xml = "./lrmodels/YoloV3/FP16/frozen_yolo_v3.xml"
-        self.model_bin = "./lrmodels/YoloV3/FP16/frozen_yolo_v3.bin"
+        self.model_xml = "./lrmodels/tiny-YoloV3/FP16/frozen_tiny_yolo_v3.xml"
+        self.model_bin = "./lrmodels/tiny-YoloV3/FP16/frozen_tiny_yolo_v3.bin"
         self.camera_width = camera_width
         self.camera_height = camera_height
         self.m_input_size = 416
-        self.threshould = 0.7
+        self.threshould = 0.4
         self.num_requests = 4
         self.inferred_request = [0] * self.num_requests
         self.heap_request = []
@@ -330,7 +332,9 @@ class NcsWorker(object):
                         continue
                     for j in range(i + 1, objlen):
                         if (IntersectionOverUnion(objects[i], objects[j]) >= 0.4):
-                            objects[j].confidence = 0
+                            if objects[i].confidence < objects[j].confidence:
+                                objects[i], objects[j] = objects[j], objects[i]
+                            objects[j].confidence = 0.0
 
                 self.results.put(objects)
                 self.inferred_request[dev] = 0

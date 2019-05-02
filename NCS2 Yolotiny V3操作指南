@@ -1,0 +1,9 @@
+First set up your catkin workspace that can run python3 with cv_bridge according to:
+https://stackoverflow.com/questions/49221565/unable-to-use-cv-bridge-with-ros-kinetic-and-python3/50291787#50291787
+
+
+then run the following commands (py3_ws is work space you just set up.):
+
+cd penVINO-YoloV3
+source ~/py3_ws/install/setup.bash --extend
+python3 ros_openvino_tiny-yolov3_MultiStick_test.py -numncs 1
